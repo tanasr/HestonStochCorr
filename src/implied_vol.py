@@ -2,18 +2,17 @@
 Computing implied BS-volatilites using Newton's root-finding method'
 """
 
-"try out scipy.optimize.newton"
-
-
 
 import numpy as np
 from scipy.stats import norm
 from scipy import optimize
 # import sys
-from BlackScholes import BlackScholesCall
+from VanillaBlackScholes import BlackScholesAnalytic
 from matplotlib import pyplot as plt
 
-
+s0 = 100; K = 110; T = 1/12
+r = 0.01; q = 0; Vmarket = 1.9
+sigma0 = 0.5
 
 def call_implied_vol(Vmarket, s0, K, T, r=0, q=0):  
     tol = 1e-6
@@ -50,6 +49,60 @@ def call_implied_vol(Vmarket, s0, K, T, r=0, q=0):
 #     return sigma1
 
 
+
+def call_IV(sigma0, s0, K, T, r, q, Vmarket, method='newton'):
+    d1 = (np.log(s0/K) + (r - q + 0.5*sigma0**2) * T) / (sigma0*np.sqrt(T))
+    vega = lambda sigma0: s0*np.exp(-q*T)*np.sqrt(T)*norm.pdf(d1)
+    
+    def residual(sigma0):
+        res = BlackScholesAnalytic(s0,K,sigma0,T,r,q=0,option='call') - Vmarket
+        return res
+
+    if method == 'newton':
+        tol = 1e-6
+        iv = optimize.newton(residual,sigma0,vega,tol=tol)
+    if method == 'fsolve':
+        iv = optimize.fsolve(residual,sigma0,fprime=vega)
+    if method == 'brentq':
+        iv = optimize.brentq(residual,1/10000,5)
+    return iv
+print(call_IV(0.5,s0,K,T,r,0,Vmarket,'newton'))
+
+def call_IV_Newton(sigma0, s0, K, T, r, q, Vmarket):
+    d1 = (np.log(s0/K) + (r - q + 0.5*sigma0**2) * T) / (sigma0*np.sqrt(T))
+    vega = lambda sigma0: s0*np.exp(-q*T)*np.sqrt(T)*norm.pdf(d1)
+    def residual(sigma0):
+        res = BlackScholesAnalytic(s0,K,sigma0,T,r,q=0,option='call') - Vmarket
+        return res
+
+    tol = 1e-6
+    iv = optimize.newton(residual,sigma0,vega,tol=tol)
+    return iv
+
+def call_IV_Brentq(sigma0, s0, K, T, r, q, Vmarket):
+    def residual(sigma0):
+        res = BlackScholesAnalytic(s0,K,sigma0,T,r,q=0,option='call') - Vmarket
+        return res
+
+    iv = optimize.brentq(residual,1/10000,5)
+    return iv
+
+#without first derivative vega
+def call_IV_Fsolve(sigma0, s0, K, T, r, q, Vmarket):
+    def residual(sigma0):
+        res = BlackScholesAnalytic(s0,K,sigma0,T,r,q=0,option='call') - Vmarket
+        return res
+
+    iv = optimize.fsolve(residual,sigma0)
+    return iv
+
+
+#Vmodel = S_0*np.exp(-q*T)*norm.cdf(d1)-np.exp(-r*T)*K*norm.cdf(d2)-S_0*np.exp(-q*T)+np.exp(-r*T)*K
+
+
+
+
+#### TESTS ###
 
 # def residual(sigma, s0, K, r, T, q, Vmarket):
 #     # d1 = (np.log(s0/K) + (r - q + 0.5*sigma**2) * T) / (sigma*np.sqrt(T))
@@ -92,64 +145,3 @@ def call_implied_vol(Vmarket, s0, K, T, r=0, q=0):
 # plt.show()
 
 # lowerbound = s0-np.exp(-r*(T-t))*K
-
-
-
-
-def call_IV(sigma0, s0, K, T, r, q, Vmarket, method='newton'):
-    d1 = (np.log(s0/K) + (r - q + 0.5*sigma0**2) * T) / (sigma0*np.sqrt(T))
-    vega = lambda sigma0: s0*np.exp(-q*T)*np.sqrt(T)*norm.pdf(d1)
-    
-    def residual(sigma0):
-        res = BlackScholesCall(s0,K,sigma0,T,r) - Vmarket
-        return res
-
-    if method == 'newton':
-        tol = 1e-6
-        iv = optimize.newton(residual,sigma0,vega,tol=tol)
-    if method == 'fsolve':
-        iv = optimize.fsolve(residual,sigma0,fprime=vega)
-    if method == 'brentq':
-        iv = optimize.brentq(residual,1/10000,5)
-    return iv
-
-# print(call_IV(0.5,s0,K,T,r,0,Vmarket,'brentq'))
-
-
-
-
-def call_IV_Newton(sigma0, s0, K, T, r, q, Vmarket):
-    d1 = (np.log(s0/K) + (r - q + 0.5*sigma0**2) * T) / (sigma0*np.sqrt(T))
-    vega = lambda sigma0: s0*np.exp(-q*T)*np.sqrt(T)*norm.pdf(d1)
-    
-    def residual(sigma0):
-        res = BlackScholesCall(s0,K,sigma0,T,r) - Vmarket
-        return res
-
-    tol = 1e-6
-    iv = optimize.newton(residual,sigma0,vega,tol=tol)
-    return iv
-
-def call_IV_Brentq(sigma0, s0, K, T, r, q, Vmarket):
-    
-    def residual(sigma0):
-        res = BlackScholesCall(s0,K,sigma0,T,r) - Vmarket
-        return res
-
-    iv = optimize.brentq(residual,1/10000,5)
-    return iv
-
-#without first derivative vega
-def call_IV_Fsolve(sigma0, s0, K, T, r, q, Vmarket):
-    
-    def residual(sigma0):
-        res = BlackScholesCall(s0,K,sigma0,T,r) - Vmarket
-        return res
-
-    iv = optimize.fsolve(residual,sigma0)
-    return iv
-
-
-
-
-#Vmodel = S_0*np.exp(-q*T)*norm.cdf(d1)-np.exp(-r*T)*K*norm.cdf(d2)-S_0*np.exp(-q*T)+np.exp(-r*T)*K

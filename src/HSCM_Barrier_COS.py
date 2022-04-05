@@ -14,23 +14,26 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import scipy.integrate as integrate
 import time
+import matplotlib.pyplot as plt
 
 s0 = 2461.44; K = 2461.44; H = 1.5*s0; T = 6; M = 6 #6 monts maturity, 6 monitorings
-r = 0.03; q = 0; alpha = 1; #alpha=1 for call, =-1 for put (not damping factor)
-v0 = 0.0654; mv = 0.0707; sv = 0.2928; kv = 0.6067; 
+r = 0.03; q = 0; alpha = 1 #alpha=1 for call, =-1 for put (not damping factor)
+v0 = 0.0654; mv = 0.0707; sv = 0.2928; kv = 0.6067 
 mr = 0.0707; sr = 0.2928; kr = 0.6067; rho0 = -0.7571; rho2 = -0.5
 
-N = 64 
+N = 64
 
 
 # Formulas in brackets are from Hirsa page 63ff
 def BarrierExtHestonUOC(s0,K,H,T,r,q,kv,mv,sv,v0,kr,mr,sr,rho0,rho2,alpha,M,N):
     # T = observation dates N
-    Tvec = np.arange(0,T+1)/(T); dt = Tvec[1]-Tvec[0]; #M = len(Tvec)-1
-    x = log(s0/K);
-    k = np.arange(0,N,1); h = log(H/K); 
+    # Tvec = np.arange(0,T+1)/(T); dt = Tvec[1]-Tvec[0]; #M = len(Tvec)-1
+    dt = T/M
+    Tvec = np.arange(0,T+dt,dt)
+    x = log(s0/K)
+    k = np.arange(0,N,1)
+    h = log(H/K)
 
-   
     #c1 and c2 calculated using SV parameters from pure Heston
     c1 = (r-q)*dt + (1-np.exp(-kv*dt)) * (mv-v0)/(2*kv) - 0.5*mv*dt
     c2 = (1/(8*kv**3)) * \
@@ -40,7 +43,7 @@ def BarrierExtHestonUOC(s0,K,H,T,r,q,kv,mv,sv,v0,kr,mr,sr,rho0,rho2,alpha,M,N):
          + sv**2*((mv-2*v0)*np.exp(-2*kv*dt)+mv*(6*np.exp(-kv*dt)-7)+2*v0) 
          + 8*kv**2*(v0-mv)*(1-np.exp(-kv*dt)))
     c4 = 0 
-    L = 14
+    L = 14*3
     a = c1-L*sqrt(abs(c2) + sqrt(c4)) # c2<0 if Feller not met 
     b = c1+L*sqrt(abs(c2) + sqrt(c4))
     
@@ -71,10 +74,10 @@ def BarrierExtHestonUOC(s0,K,H,T,r,q,kv,mv,sv,v0,kr,mr,sr,rho0,rho2,alpha,M,N):
     
     def CF_OU(p,x0,r,T,u):
         # numerically integrate the system of ODEs
-        kv = p[0]; mv = p[1]; sv = p[2]; v0 = p[3]; # variance process param
-        kr = p[4]; mr = p[5]; sr = p[6]; rho0 = p[7]; # correlation process param
-        rho2 = p[8]; #correlation between dp and dv (set to be constant)
-        m = np.sqrt(mv-sv**2/(8*kv)+0j); # aux var
+        kv = p[0]; mv = p[1]; sv = p[2]; v0 = p[3] # variance process param
+        kr = p[4]; mr = p[5]; sr = p[6]; rho0 = p[7] # correlation process param
+        rho2 = p[8] #correlation between dp and dv (set to be constant)
+        m = np.sqrt(mv-sv**2/(8*kv)+0j) # aux var
         # n = np.sqrt(v0) - m
         # integrate, for a given u, the system of ODEs in ]0,T]
         sol = solve_ivp(F,[0,T],[0j,0j,0j],method='BDF', \
@@ -116,23 +119,30 @@ def BarrierExtHestonUOC(s0,K,H,T,r,q,kv,mv,sv,v0,kr,mr,sr,rho0,rho2,alpha,M,N):
     phi = np.zeros(N, dtype=complex)
     
     #main loop for up-and-out where x1=a, x2=h, c=h and d=b
-    for m in range(M,1,-1): #in range M to 2 backwards with steps -1
+    for m in np.arange(M,1,-1): #in range M to 2 backwards with steps -1
         Ck = np.zeros(N) #define for each iteration an empty vector for Ck (2.59)
-        for k in range(0,N):
+        for k in np.arange(0,N):
             Mkj = Mkfunc(a,h,np.arange(0,N))
             
             # Solve extended heston phi for given u
             # to obtain Ck as in (2.59) in Hirsa, using T = dt
             # Vkm is actually the option value at each monitoring point:
             char_fcn = lambda u: np.real(CF_OU(param,log(s0),r,dt,u))
-            for idx, u in enumerate(range(0,N)):
+            for idx, u in enumerate(np.arange(0,N)):
                 phi[idx] = char_fcn( u*pi/(b-a) ) # evaluate charfunc at each u
-            Ck[k] = exp(-r*dt) * integrate.trapz( np.real(phi * Vkm * Mkj), x=range(0,N))
+            Ck[k] = exp(-r*dt) * integrate.trapz( np.real(phi * Vkm * Mkj), x=np.arange(0,N))
         Vkm = Ck 
+        fig = plt.figure()
+        fig.add_subplot(3,1,1)
+        plt.plot(np.arange(0,N), phi)
+        fig.add_subplot(3,1,2)
+        plt.plot(np.arange(0,N), Vkm)
+        fig.add_subplot(3,1,3)
+        plt.plot(np.arange(0,N), Mkj)
     
     
     char_fcn = lambda u: CF_OU(param,np.log(K),r,dt,u)
-    for idx, u in enumerate(range(0,N)):
+    for idx, u in enumerate(np.arange(0,N)):
         phi[idx] = char_fcn( u*pi/(b-a) ) # evaluate charfunc at each u
         
     #integration using integrate.trapz because Vkm is a vector
@@ -141,7 +151,7 @@ def BarrierExtHestonUOC(s0,K,H,T,r,q,kv,mv,sv,v0,kr,mr,sr,rho0,rho2,alpha,M,N):
 
     #equation (2.68) in Hirsa
     integrand =  phi * exp( -1j * np.arange(0,N) * pi*a/(b-a) ) * Vkm
-    v = integrate.trapz( np.real(integrand), x=range(0,N))
+    v = integrate.trapz( np.real(integrand), x=np.arange(0,N))
     v = exp(-r*dt) * v
     return v 
 
